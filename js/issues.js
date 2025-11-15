@@ -48,6 +48,7 @@ class GitHubIssuesManager {
         const config = this.parseConfiguration(container, options);
 
         this.githubToken = localStorage.getItem('github_token') || '';
+        console.log('🔑 Token from localStorage:', this.githubToken ? '✅ Found (length: ' + this.githubToken.length + ')' : '❌ Not found');
         this.baseURL = 'https://api.github.com';
         this.owner = config.githubOwner;
         this.detectCurrentFolder = config.detectCurrentFolder;
@@ -97,6 +98,9 @@ class GitHubIssuesManager {
         this.currentView = 'short'; // Default view
         this.isFullscreen = false;
         this.currentRefreshIssueId = null;
+
+        // Minimal mode - only show GitHub token auth section
+        this.minimalMode = options.minimalMode || false;
 
         // Search debouncing
         this.searchDebounceTimer = null;
@@ -187,6 +191,13 @@ class GitHubIssuesManager {
             return;
         }
 
+        // In minimal mode, only render the header (auth section)
+        if (this.minimalMode) {
+            container.innerHTML = `${this.createHeaderHTML()}`;
+            return;
+        }
+
+        // Normal mode - render everything
         container.innerHTML = `
             ${this.createHeaderHTML()}
             ${this.createRateLimitHTML()}
@@ -201,26 +212,92 @@ class GitHubIssuesManager {
     }
 
     createHeaderHTML() {
+        // In minimal mode, skip the h1 header and fullscreen button
+        if (this.minimalMode) {
+            return `
+                <div class="issues-header">
+                    <div class="header-content">
+                        <div id="github-token-fields">
+                            <p class="subtitle">
+                                <a href="#" id="toggleTokenSection" class="token-toggle-link" style="font-size: 0.9rem;">Add Your GitHub Token</a>
+                                <span id="tokenBenefitText" style="font-size: 0.9rem;"> to increase API rate limits from 60 to 5,000 requests per hour</span>
+                                <span id="headerLastRefreshTime" style="font-size: 0.9rem; display: none;"> Issue counts last updated: <span id="headerRefreshTime">Never</span>.</span>
+                                <span id="gitAccountDisplay" style="font-size: 0.9rem; display: none;"> GitHub: <a href="#" id="gitAccountLink" onclick="toggleGitIssuesAccount(); return false;"></a></span>
+                            </p>
+                            <p class="subtitle" style="margin-top: 5px;">
+                                <input type="text" id="gitIssuesAccount" class="textInput" style="width:150px; font-size: 14px; display: none;" placeholder="GitHub Account" onfocus="this.select()" oninput="updateGitIssuesAccount()">
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- GitHub Authentication -->
+                    <div class="auth-section" id="authSection" style="display: none;">
+                        <div class="auth-input">
+                            <input type="password" id="githubToken" placeholder="Enter GitHub Personal Access Token (optional for public repos)">
+                            <button id="saveToken" class="btn btn-primary">
+                                <i class="fas fa-save"></i> Save Token
+                            </button>
+                            <button id="clearToken" class="btn btn-primary" style="display: none;">
+                                Clear
+                            </button>
+                        </div>
+                        <div class="auth-help">
+                            <i class="fas fa-info-circle"></i>
+                            <span><strong>Token Benefits:</strong> Access private repositories and higher rate limits.</span>
+                        </div>
+                        <div class="auth-instructions">
+                            <details>
+                                <summary>
+                                    <span><i class="fas fa-question-circle"></i> How to create a GitHub token?</span>
+                                    <a href="https://github.com/settings/tokens/new?description=ModelEarth+Projects+Hub&scopes=repo,read:org" target="_blank" class="token-link">
+                                        <i class="fas fa-external-link-alt"></i> Get Your Token
+                                    </a>
+                                </summary>
+                                <div class="instructions-content">
+                                    <ol>
+                                        <li>Click the "Get Your Token" link above (opens GitHub)</li>
+                                        <li>You'll be taken to GitHub's token creation page with recommended settings</li>
+                                        <li>Add a description like "ModelEarth Projects Hub"</li>
+                                        <li>Select scopes: <code>repo</code> (for private repos) and <code>read:org</code> (for organization data)</li>
+                                        <li>Click "Generate token" at the bottom</li>
+                                        <li>Copy the generated token immediately (you won't see it again!)</li>
+                                        <li>Paste it in the field above and click "Save Token"</li>
+                                    </ol>
+                                    <p class="note">
+                                        <i class="fas fa-shield-alt"></i>
+                                        <strong>Security:</strong> Tokens are stored locally in your browser only. Never share your token with others.
+                                    </p>
+                                </div>
+                            </details>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Normal mode - full header with h1 and fullscreen button
         return `
             <div class="issues-header">
                 <i class="fas fa-expand header-fullscreen-btn" onclick="issuesManager.toggleFullscreen()" title="Toggle Fullscreen"></i>
-                
+
                 <div class="header-content">
                     <h1 style="font-size:32px"><i class="fab fa-github"></i> Team Projects</h1>
-                    <p class="subtitle">
-                        <a href="#" id="toggleTokenSection" class="token-toggle-link" style="font-size: 0.9rem;">Add Your GitHub Token</a>
-                        <span id="tokenBenefitText" style="font-size: 0.9rem;"> to increase API rate limits from 60 to 5,000 requests per hour</span>
-                        <span id="headerLastRefreshTime" style="font-size: 0.9rem; display: none;"> Issue counts last updated: <span id="headerRefreshTime">Never</span>.</span>
-                        <span id="gitAccountDisplay" style="font-size: 0.9rem; display: none;"> GitHub: <a href="#" id="gitAccountLink" onclick="toggleGitIssuesAccount(); return false;"></a></span>
-                    </p>
-                    <p class="subtitle" style="margin-top: 5px;">
-                        <input type="text" id="gitIssuesAccount" class="textInput" style="width:150px; font-size: 14px; display: none;" placeholder="GitHub Account" onfocus="this.select()" oninput="updateGitIssuesAccount()">
-                    </p>
+                    <div id="github-token-fields">
+                        <p class="subtitle">
+                            <a href="#" id="toggleTokenSection" class="token-toggle-link" style="font-size: 0.9rem;">Add Your GitHub Token</a>
+                            <span id="tokenBenefitText" style="font-size: 0.9rem;"> to increase API rate limits from 60 to 5,000 requests per hour</span>
+                            <span id="headerLastRefreshTime" style="font-size: 0.9rem; display: none;"> Issue counts last updated: <span id="headerRefreshTime">Never</span>.</span>
+                            <span id="gitAccountDisplay" style="font-size: 0.9rem; display: none;"> GitHub: <a href="#" id="gitAccountLink" onclick="toggleGitIssuesAccount(); return false;"></a></span>
+                        </p>
+                        <p class="subtitle" style="margin-top: 5px;">
+                            <input type="text" id="gitIssuesAccount" class="textInput" style="width:150px; font-size: 14px; display: none;" placeholder="GitHub Account" onfocus="this.select()" oninput="updateGitIssuesAccount()">
+                        </p>
+                    </div>
                      <span>
        <a class="token-toggle-link" style="font-size:0.9rem;" href="/team/projects/#list=modelteam">Team Members</a>
          </span>
                 </div>
-                
+
                 <!-- GitHub Authentication -->
                 <div class="auth-section" id="authSection" style="display: none;">
                     <div class="auth-input">
@@ -572,6 +649,19 @@ class GitHubIssuesManager {
         // Create the widget structure first
         this.createWidgetStructure();
 
+        // In minimal mode, only setup auth-related functionality
+        if (this.minimalMode) {
+            // Setup only auth event listeners
+            this.setupAuthEventListeners();
+            // Update token UI to show/hide clear button
+            this.updateTokenUI();
+            // Update toggle link text and benefit text based on token presence
+            this.updateTokenSectionUI();
+            console.log('✅ Minimal mode init complete - auth section only');
+            return;
+        }
+
+        // Normal mode - full initialization
         // Ensure initial responsive state is correct
         this.updateAssigneeButton();
         this.updateToggleButtonDisplay();
@@ -1265,14 +1355,31 @@ class GitHubIssuesManager {
         }, 60000); // Update every minute
     }
 
+    // Setup only auth-related event listeners (for minimal mode)
+    setupAuthEventListeners() {
+        const toggleBtn = document.getElementById('toggleTokenSection');
+        const saveBtn = document.getElementById('saveToken');
+        const clearBtn = document.getElementById('clearToken');
+
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.toggleTokenSection();
+            });
+        }
+
+        if (saveBtn) {
+            saveBtn.addEventListener('click', () => this.saveToken());
+        }
+
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => this.clearToken());
+        }
+    }
+
     setupEventListeners() {
         // Token management
-        document.getElementById('toggleTokenSection').addEventListener('click', (e) => {
-            e.preventDefault();
-            this.toggleTokenSection();
-        });
-        document.getElementById('saveToken').addEventListener('click', () => this.saveToken());
-        document.getElementById('clearToken').addEventListener('click', () => this.clearToken());
+        this.setupAuthEventListeners();
 
         // Filters
         document.getElementById('repoFilter').addEventListener('change', async (e) => {
@@ -1496,12 +1603,26 @@ class GitHubIssuesManager {
         const tokenInput = document.getElementById('githubToken');
         const clearButton = document.getElementById('clearToken');
 
+        console.log('🎨 updateTokenUI called:', {
+            hasToken: !!this.githubToken,
+            tokenLength: this.githubToken?.length || 0,
+            tokenInputExists: !!tokenInput,
+            clearButtonExists: !!clearButton
+        });
+
+        if (!tokenInput || !clearButton) {
+            console.warn('⚠️ updateTokenUI: Elements not found!');
+            return;
+        }
+
         if (this.githubToken) {
             tokenInput.value = '••••••••••••••••';
             clearButton.style.display = 'inline-block';
+            console.log('✅ Token UI updated: Clear button shown');
         } else {
             tokenInput.value = '';
             clearButton.style.display = 'none';
+            console.log('ℹ️ Token UI updated: No token, clear button hidden');
         }
     }
 
@@ -4726,16 +4847,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 100);
 });
 
-// Initialize the issues manager when the page loads
+// Initialize the issues manager when the page loads (auto-init for projects/hub page)
+// For other pages (like team/projects), use manual initialization with minimalMode option
 let issuesManager;
 document.addEventListener('DOMContentLoaded', () => {
-    // Check if there's a specific container, otherwise use default
+    // Check if there's a specific container, otherwise skip auto-init
     const container = document.getElementById('issuesWidget');
     if (container) {
         // Get container ID from data attribute or use default
         const containerId = container.dataset.containerId || 'issuesWidget';
         issuesManager = new GitHubIssuesManager(containerId);
-    } else {
-        console.error('Issues widget container not found. Please add <div id="issuesWidget"></div> to your page.');
+        console.log('✅ Auto-initialized full GitHubIssuesManager widget');
     }
+    // If no container found, skip auto-init (page may use manual initialization)
 });
